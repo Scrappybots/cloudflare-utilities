@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+httpx
+sqlalchemy
+pydantic
+aiofiles
+jinja2
+python-multipart
+aiosqlite
