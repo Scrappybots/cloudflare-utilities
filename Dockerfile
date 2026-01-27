@@ -11,6 +11,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY . .
 
+# Ensure static directories exist (in case they're empty and not tracked by git)
+RUN mkdir -p app/static/js app/static/style
+
 # Expose the port
 EXPOSE 8000
 
