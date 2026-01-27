@@ -24,13 +24,13 @@ Pull and run the latest image from GitHub Container Registry:
 
 ```bash
 # Pull the latest image
-docker pull ghcr.io/leviac42/cloudflare-utilities:latest
+docker pull ghcr.io/scrappybots/cloudflare-utilities:latest
 
 # Run the container
 docker run -d \
   --name cloudflare-utilities \
   -p 8000:8000 \
-  ghcr.io/leviac42/cloudflare-utilities:latest
+  ghcr.io/scrappybots/cloudflare-utilities:latest
 ```
 
 Access the application at: **http://localhost:8000**
@@ -44,7 +44,7 @@ version: '3.8'
 
 services:
   cloudflare-utilities:
-    image: ghcr.io/leviac42/cloudflare-utilities:latest
+    image: ghcr.io/scrappybots/cloudflare-utilities:latest
     container_name: cloudflare-utilities
     ports:
       - "8000:8000"
@@ -64,10 +64,10 @@ docker compose up -d
 
 ```bash
 # Pull a specific version
-docker pull ghcr.io/leviac42/cloudflare-utilities:v1.0.0
+docker pull ghcr.io/scrappybots/cloudflare-utilities:v1.0.0
 
 # Run with version tag
-docker run -d -p 8000:8000 ghcr.io/leviac42/cloudflare-utilities:v1.0.0
+docker run -d -p 8000:8000 ghcr.io/scrappybots/cloudflare-utilities:v1.0.0
 ```
 
 ---
@@ -83,7 +83,7 @@ docker run -d -p 8000:8000 ghcr.io/leviac42/cloudflare-utilities:v1.0.0
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/Leviac42/cloudflare-utilities.git
+git clone https://github.com/scrappybots/cloudflare-utilities.git
 cd cloudflare-utilities
 ```
 
@@ -182,7 +182,7 @@ docker run -d \
   --name cloudflare-utilities \
   -p 8000:8000 \
   -v $(pwd)/data:/app \
-  ghcr.io/leviac42/cloudflare-utilities:latest
+  ghcr.io/scrappybots/cloudflare-utilities:latest
 ```
 
 ---
@@ -255,7 +255,7 @@ lsof -i :8000  # Linux/macOS
 netstat -ano | findstr :8000  # Windows
 
 # Use a different port
-docker run -d -p 8080:8000 ghcr.io/leviac42/cloudflare-utilities:latest
+docker run -d -p 8080:8000 ghcr.io/scrappybots/cloudflare-utilities:latest
 ```
 
 **Permission denied for Docker:**
