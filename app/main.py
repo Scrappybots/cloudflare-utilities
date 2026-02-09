@@ -1,14 +1,14 @@
 import os
 import asyncio
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, select
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship, selectinload
 import httpx
@@ -107,6 +107,15 @@ async def fetch_records(client: httpx.AsyncClient, zone_id: str):
             break
     return records
 
+class SyncState:
+    def __init__(self):
+        self.in_progress = False
+        self.last_sync_at: Optional[datetime] = None
+        self.last_error: Optional[str] = None
+
+sync_state = SyncState()
+sync_lock = asyncio.Lock()
+
 async def sync_cloudflare_task(api_token: str):
     headers = {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
@@ -114,46 +123,46 @@ async def sync_cloudflare_task(api_token: str):
         zones_data = await fetch_zones(client)
         
         async with AsyncSessionLocal() as session:
-            # Clear existing data? Or update? Let's clear for simplicity in this utility
-            # Ideally we'd do smart updates, but "pull every DNS record" implies a fresh sync
-            # To be safe, let's just upsert or replace.
-            # For simplicity: delete all and re-insert is safest for a "snapshot" tool.
-            await session.execute(select(Record).execution_options(synchronize_session=False)) # Check first?
-            # Actually, let's just add new ones and update existing.
-            
+            # Snapshot sync: clear and re-insert to ensure deletions are reflected
+            await session.execute(delete(Record))
+            await session.execute(delete(Zone))
+            await session.commit()
+
             for z_data in zones_data:
-                zone = await session.get(Zone, z_data['id'])
-                if not zone:
-                    zone = Zone(id=z_data['id'], name=z_data['name'], status=z_data['status'])
-                    session.add(zone)
-                else:
-                    zone.name = z_data['name']
-                    zone.status = z_data['status']
-                
-                # Fetch records for this zone
+                zone = Zone(id=z_data['id'], name=z_data['name'], status=z_data['status'])
+                session.add(zone)
+
+            for z_data in zones_data:
                 records_data = await fetch_records(client, z_data['id'])
                 for r_data in records_data:
-                    record = await session.get(Record, r_data['id'])
-                    if not record:
-                        record = Record(
-                            id=r_data['id'],
-                            zone_id=z_data['id'],
-                            type=r_data['type'],
-                            name=r_data['name'],
-                            content=r_data['content'],
-                            proxied=r_data.get('proxied', False),
-                            ttl=r_data['ttl']
-                        )
-                        session.add(record)
-                    else:
-                        record.type = r_data['type']
-                        record.name = r_data['name']
-                        record.content = r_data['content']
-                        record.proxied = r_data.get('proxied', False)
-                        record.ttl = r_data['ttl']
-            
+                    record = Record(
+                        id=r_data['id'],
+                        zone_id=z_data['id'],
+                        type=r_data['type'],
+                        name=r_data['name'],
+                        content=r_data['content'],
+                        proxied=r_data.get('proxied', False),
+                        ttl=r_data['ttl']
+                    )
+                    session.add(record)
+
             await session.commit()
     print("Sync complete")
+
+async def run_sync(api_token: str):
+    async with sync_lock:
+        if sync_state.in_progress:
+            return
+        sync_state.in_progress = True
+        sync_state.last_error = None
+
+    try:
+        await sync_cloudflare_task(api_token)
+        sync_state.last_sync_at = datetime.now(timezone.utc)
+    except Exception as exc:
+        sync_state.last_error = str(exc)
+    finally:
+        sync_state.in_progress = False
 
 # --- Endpoints ---
 
@@ -171,8 +180,18 @@ class SyncRequest(BaseModel):
 @app.post("/api/sync")
 async def sync_data(request: SyncRequest, background_tasks: BackgroundTasks):
     """Trigger a synchronization of Cloudflare data."""
-    background_tasks.add_task(sync_cloudflare_task, request.api_token)
+    if sync_state.in_progress:
+        return {"status": "in_progress", "message": "Synchronization already running."}
+    background_tasks.add_task(run_sync, request.api_token)
     return {"status": "started", "message": "Synchronization started in background."}
+
+@app.get("/api/sync/status")
+async def sync_status():
+    return {
+        "in_progress": sync_state.in_progress,
+        "last_sync_at": sync_state.last_sync_at.isoformat() if sync_state.last_sync_at else None,
+        "last_error": sync_state.last_error,
+    }
 
 class RecordOut(BaseModel):
     id: str

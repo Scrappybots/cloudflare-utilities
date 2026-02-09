@@ -89,8 +89,13 @@
                         class="px-4 py-2 rounded">Chains Map</button>
                     <button @click="exportData" class="px-4 py-2 rounded bg-green-700 hover:bg-green-600">Export
                         CSV</button>
-                    <button @click="refresh" class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600">Refresh</button>
+                    <button @click="refresh" :disabled="syncing"
+                        class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed">Refresh</button>
                 </div>
+            </div>
+            <div class="text-xs text-gray-400 mb-4" v-if="syncStatus.last_sync_at || syncStatus.last_error">
+                <span v-if="syncStatus.last_sync_at">Last sync: [[ formatTimestamp(syncStatus.last_sync_at) ]]</span>
+                <span v-if="syncStatus.last_error" class="text-red-400"> | Error: [[ syncStatus.last_error ]]</span>
             </div>
         </div>
 
@@ -174,10 +179,14 @@
                     apiKey: '',
                     syncing: false,
                     records: [],
-                    records: [],
-                    chains: {},     // Initialize as object
+                    chains: {},
                     view: 'records',
-                    searchQuery: ''
+                    searchQuery: '',
+                    syncStatus: {
+                        in_progress: false,
+                        last_sync_at: null,
+                        last_error: null
+                    }
                 }
             },
             computed: {
@@ -227,20 +236,7 @@
             },
             methods: {
                 async startSync() {
-                    this.syncing = true;
-                    try {
-                        const res = await fetch('/api/sync', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ api_token: this.apiKey })
-                        });
-                        // Poll for completion or just wait a bit and fetch
-                        // For simplicity, just wait 5s then fetch
-                        setTimeout(this.fetchData, 5000);
-                    } catch (e) {
-                        alert("Sync failed: " + e);
-                        this.syncing = false;
-                    }
+                    await this.syncNow();
                 },
                 async fetchData() {
                     try {
@@ -260,8 +256,56 @@
                         console.error(e);
                     }
                 },
-                refresh() {
-                    this.fetchData();
+                async refresh() {
+                    await this.syncNow();
+                },
+                async syncNow() {
+                    const storedToken = localStorage.getItem('cf_api_token');
+                    const token = this.apiKey || storedToken;
+                    if (!token) {
+                        alert('Enter your Cloudflare API token to refresh data.');
+                        return;
+                    }
+
+                    this.apiKey = token;
+                    localStorage.setItem('cf_api_token', token);
+
+                    this.syncing = true;
+                    try {
+                        await fetch('/api/sync', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ api_token: token })
+                        });
+                        await this.pollSyncStatus();
+                    } catch (e) {
+                        alert("Sync failed: " + e);
+                        this.syncing = false;
+                    }
+                },
+                async pollSyncStatus() {
+                    try {
+                        const res = await fetch('/api/sync/status');
+                        this.syncStatus = await res.json();
+
+                        if (this.syncStatus.in_progress) {
+                            setTimeout(this.pollSyncStatus, 2000);
+                            return;
+                        }
+
+                        this.syncing = false;
+                        if (!this.syncStatus.last_error) {
+                            await this.fetchData();
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.syncing = false;
+                    }
+                },
+                formatTimestamp(value) {
+                    if (!value) return '';
+                    const date = new Date(value);
+                    return date.toLocaleString();
                 },
                 exportData() {
                     const csvRows = [];
@@ -327,8 +371,11 @@
                 }
             },
             mounted() {
-                // Check if we have data already
+                const storedToken = localStorage.getItem('cf_api_token');
+                if (storedToken) this.apiKey = storedToken;
+
                 this.fetchData();
+                this.pollSyncStatus();
             }
         }).mount('#app')
     </script>
