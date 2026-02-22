@@ -1,20 +1,21 @@
 # Cloudflare DNS Utilities
 
-A web-based utility to visualize, map, and analyze your Cloudflare DNS records across all your zones. Identify CNAME chains, export records to CSV, and get a complete overview of your DNS configuration.
+A web-based utility to visualize, map, analyze, and edit your Cloudflare DNS records across all your zones. Identify CNAME chains, update records with a guided confirmation flow, export to CSV, and get a complete overview of your DNS configuration.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-latest-green.svg)
-![Docker](https://img.shields.io/badge/Docker-ready-blue.svg)
+![Docker](https://img.shields.io/badge/Docker%20%2F%20Podman-ready-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ## Features
 
 - 🔄 **Sync DNS Records** - Pull all DNS records from all your Cloudflare zones
+- ✏️ **Edit DNS Records** - Update any record directly from the dashboard with a 3-step preview → confirm flow
 - 🗺️ **CNAME Chain Mapping** - Visualize CNAME chains and identify complex DNS configurations
 - 📊 **Dashboard View** - Browse and search all your DNS records in one place
 - 📥 **CSV Export** - Export your DNS records for backup or analysis
-- 🔒 **Secure** - API token is used locally and never stored on disk
-- 🐳 **Docker Ready** - Easy deployment with pre-built containers
+- 🔒 **Secure** - API token is stored only in your browser's local storage and never sent to a server database
+- 🐳 **Docker / Podman Ready** - Easy deployment with pre-built containers
 
 ## Quick Start with Docker
 
