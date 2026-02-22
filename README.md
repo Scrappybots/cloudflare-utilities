@@ -17,7 +17,7 @@ A web-based utility to visualize, map, analyze, and edit your Cloudflare DNS rec
 - 🔒 **Secure** - API token is stored only in your browser's local storage and never sent to a server database
 - 🐳 **Docker / Podman Ready** - Easy deployment with pre-built containers
 
-## Quick Start with Docker
+## Quick Start with Docker / Podman
 
 ### Using Pre-built Container (Recommended)
 
@@ -27,14 +27,18 @@ Pull and run the latest image from GitHub Container Registry:
 # Pull the latest image
 docker pull ghcr.io/scrappybots/cloudflare-utilities:latest
 
-# Run the container
+# Run (localhost only - recommended for local use)
 docker run -d \
   --name cloudflare-utilities \
-  -p 8000:8000 \
+  -p 127.0.0.1:8000:8000 \
   ghcr.io/scrappybots/cloudflare-utilities:latest
 ```
 
+> **Podman users** — replace `docker` with `podman` in all commands. Everything works identically.
+
 Access the application at: **http://localhost:8000**
+
+> ⚠️ **Security note:** Binding to `-p 127.0.0.1:8000:8000` restricts access to your local machine only. Using `-p 0.0.0.0:8000:8000` (or just `-p 8000:8000`) exposes the port to your network and the internet, which will attract automated scanner traffic and unnecessary load. Only use `0.0.0.0` if you have a reverse proxy (nginx, Caddy, Cloudflare Tunnel, etc.) sitting in front.
 
 ### Using Docker Compose
 
@@ -48,10 +52,10 @@ services:
     image: ghcr.io/scrappybots/cloudflare-utilities:latest
     container_name: cloudflare-utilities
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       # Optional: Persist the SQLite database
-      - ./data:/app/data
+      - ./data:/app
     restart: unless-stopped
 ```
 
@@ -64,11 +68,8 @@ docker compose up -d
 ### Running a Specific Version
 
 ```bash
-# Pull a specific version
 docker pull ghcr.io/scrappybots/cloudflare-utilities:v1.0.0
-
-# Run with version tag
-docker run -d -p 8000:8000 ghcr.io/scrappybots/cloudflare-utilities:v1.0.0
+docker run -d -p 127.0.0.1:8000:8000 ghcr.io/scrappybots/cloudflare-utilities:v1.0.0
 ```
 
 ---
@@ -77,9 +78,9 @@ docker run -d -p 8000:8000 ghcr.io/scrappybots/cloudflare-utilities:v1.0.0
 
 ### Prerequisites
 
-- **Python 3.11+**
-- **pip** (Python package manager)
+- **Python 3.11+** and **pip**
 - **Git**
+- **Docker** or **Podman** (for container builds)
 
 ### Clone the Repository
 
@@ -111,29 +112,26 @@ cd cloudflare-utilities
 3. **Run the application**:
 
    ```bash
-   uvicorn app.main:app --host 0.0.0.0 --port 8000
+   uvicorn app.main:app --host 127.0.0.1 --port 8000
    ```
 
-4. **Access the application** at: **http://localhost:8000**
+4. Access at: **http://localhost:8000**
 
-### Option 2: Build Docker Image Locally
+### Option 2: Build Container Image Locally
 
-1. **Build the image**:
+```bash
+# Build
+docker build -t cloudflare-utilities .
+# or: podman build -t cloudflare-utilities .
 
-   ```bash
-   docker build -t cloudflare-utilities .
-   ```
+# Run (localhost only)
+docker run -d \
+  --name cloudflare-utilities \
+  -p 127.0.0.1:8000:8000 \
+  cloudflare-utilities
+```
 
-2. **Run the container**:
-
-   ```bash
-   docker run -d \
-     --name cloudflare-utilities \
-     -p 8000:8000 \
-     cloudflare-utilities
-   ```
-
-3. **Access the application** at: **http://localhost:8000**
+Access at: **http://localhost:8000**
 
 ---
 
@@ -145,11 +143,18 @@ cd cloudflare-utilities
 2. Go to **My Profile** → **API Tokens**
 3. Click **Create Token**
 4. Use the **Custom token** template with the following permissions:
-   - **Zone** → **Zone** → **Read**
-   - **Zone** → **DNS** → **Read**
-5. Set **Zone Resources** to include all zones (or specific zones)
+
+   | Resource | Permission | Required for |
+   |----------|------------|--------------|
+   | Zone → Zone | Read | Listing zones |
+   | Zone → DNS | Read | Fetching records |
+   | Zone → DNS | Edit | Updating records |
+
+5. Set **Zone Resources** to all zones (or specific zones)
 6. Click **Continue to summary** → **Create Token**
-7. Copy your token (you won't see it again!)
+7. Copy your token — you won't see it again
+
+> If you only need read-only access (no record editing), you can omit the `DNS:Edit` permission.
 
 ### Step 2: Sync Your DNS Records
 
@@ -158,11 +163,20 @@ cd cloudflare-utilities
 3. Click **Start Sync**
 4. Wait for the sync to complete (time depends on your zone count)
 
-### Step 3: Explore Your Data
+### Step 3: Explore and Manage Your Data
 
-- **All Records** - View and search all DNS records across zones
-- **Chains Map** - Visualize CNAME chains and DNS relationships
-- **Export CSV** - Download all records for external analysis
+- **All Records** — Browse and search all DNS records across all zones
+- **Chains Map** — Visualize CNAME chains and DNS relationships
+- **Export CSV** — Download all visible records for external analysis
+- **Refresh** — Re-sync all records from Cloudflare at any time
+
+### Editing a DNS Record
+
+1. On the **All Records** dashboard, click **Edit** on any record row
+2. **Form** — Modify the Name, Content, TTL, and/or Proxied fields, then click **Preview Changes**
+3. **Preview** — Review a diff of exactly what will change (old value struck through in red, new value in green). Click **Accept** to proceed
+4. **Confirm** — Type `Yes` in the confirmation box and click **Confirm Update**
+5. The record is updated live in Cloudflare and all DNS records automatically re-sync
 
 ---
 
@@ -174,14 +188,14 @@ cd cloudflare-utilities
 |----------|-------------|---------|
 | `DATABASE_URL` | SQLite database path | `sqlite+aiosqlite:///./dns_manager.db` |
 
-### Persisting Data with Docker
+### Persisting Data
 
-To persist the SQLite database between container restarts:
+To retain the SQLite database between container restarts, mount the app directory:
 
 ```bash
 docker run -d \
   --name cloudflare-utilities \
-  -p 8000:8000 \
+  -p 127.0.0.1:8000:8000 \
   -v $(pwd)/data:/app \
   ghcr.io/scrappybots/cloudflare-utilities:latest
 ```
@@ -195,10 +209,11 @@ The application exposes the following REST API endpoints:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/` | Web UI |
-| `POST` | `/api/sync` | Trigger DNS sync (requires `api_token` in body) |
+| `POST` | `/api/sync` | Trigger a full DNS sync (body: `{"api_token": "..."}`) |
+| `GET` | `/api/sync/status` | Poll sync progress and last error |
 | `GET` | `/api/records` | Get all synced DNS records |
-| `GET` | `/api/zones` | Get all synced zones |
 | `GET` | `/api/chains` | Get CNAME chain analysis |
+| `PUT` | `/api/records/{id}` | Update a DNS record in Cloudflare (body: `api_token`, `name`, `content`, `ttl`, `proxied`) |
 
 ### Example API Usage
 
@@ -210,23 +225,32 @@ curl -X POST http://localhost:8000/api/sync \
 
 # Get all records
 curl http://localhost:8000/api/records
+
+# Update a record
+curl -X PUT http://localhost:8000/api/records/RECORD_ID \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_token": "your_cloudflare_api_token",
+    "name": "example.com",
+    "content": "1.2.3.4",
+    "ttl": 1,
+    "proxied": true
+  }'
 ```
 
 ---
 
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 cloudflare-utilities/
 ├── app/
-│   ├── main.py           # FastAPI application
-│   ├── static/           # CSS and JavaScript files
+│   ├── main.py             # FastAPI application & API endpoints
+│   ├── static/             # Static assets
 │   │   ├── js/
 │   │   └── style/
 │   └── templates/
-│       └── index.html    # Vue.js frontend
+│       └── index.html      # Vue.js frontend (single-page app)
 ├── .github/
 │   └── workflows/
 │       └── docker-release.yml  # CI/CD pipeline
@@ -235,41 +259,46 @@ cloudflare-utilities/
 └── README.md
 ```
 
-### Running in Development Mode
+## Development
+
+### Running with Hot Reload
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-
-The `--reload` flag enables hot reloading for development.
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
-
 **Port already in use:**
 ```bash
-# Find process using port 8000
-lsof -i :8000  # Linux/macOS
-netstat -ano | findstr :8000  # Windows
+# Windows
+netstat -ano | findstr :8000
+
+# Linux/macOS
+lsof -i :8000
 
 # Use a different port
-docker run -d -p 8080:8000 ghcr.io/scrappybots/cloudflare-utilities:latest
+docker run -d -p 127.0.0.1:8080:8000 ghcr.io/scrappybots/cloudflare-utilities:latest
 ```
 
-**Permission denied for Docker:**
-```bash
-# Add your user to the docker group (Linux)
-sudo usermod -aG docker $USER
-# Then log out and back in
-```
+**Seeing lots of scanner traffic / high CPU in logs:**
+Bind to `127.0.0.1` instead of `0.0.0.0`. See the security note in the Quick Start section above.
 
 **API Token not working:**
-- Ensure your token has `Zone:Zone:Read` and `Zone:DNS:Read` permissions
-- Check that the token hasn't expired
-- Verify zone resources are set correctly
+- Ensure the token has `Zone:Zone:Read` and `Zone:DNS:Read` permissions
+- For editing records, also add `Zone:DNS:Edit`
+- Check the token hasn't expired and zone resources are set correctly
+
+**Edit fails with a Cloudflare error:**
+- Your token was likely created without `Zone:DNS:Edit` — create a new token with that permission added
+
+**Permission denied for Docker (Linux):**
+```bash
+sudo usermod -aG docker $USER
+# Log out and back in
+```
 
 ---
 
