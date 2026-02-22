@@ -66,6 +66,9 @@
                 <li><span class="text-white font-mono bg-slate-800 px-1 rounded">Zone:DNS:Read</span> - To fetch DNS
                     records
                 </li>
+                <li><span class="text-white font-mono bg-slate-800 px-1 rounded">Zone:DNS:Edit</span> - To update DNS
+                    records
+                </li>
             </ul>
         </div>
 
@@ -119,15 +122,19 @@
                 <h3 class="text-xl font-bold mb-4 text-blue-400 border-b border-gray-700 pb-2">[[ zoneName ]]</h3>
                 <div class="grid gap-4">
                     <div v-for="record in zoneRecords" :key="record.id"
-                        class="p-4 bg-slate-800 rounded border border-slate-700 flex justify-between items-center">
-                        <div>
-                            <span class="px-2 py-1 text-xs rounded bg-slate-700 text-blue-300 font-mono mr-2">[[
+                        class="p-4 bg-slate-800 rounded border border-slate-700 flex justify-between items-center gap-4">
+                        <div class="flex items-center min-w-0">
+                            <span class="px-2 py-1 text-xs rounded bg-slate-700 text-blue-300 font-mono mr-2 flex-shrink-0">[[
                                 record.type ]]</span>
-                            <span class="font-semibold">[[ record.name ]]</span>
+                            <span class="font-semibold truncate">[[ record.name ]]</span>
                         </div>
-                        <div class="text-gray-400 font-mono text-sm truncate max-w-xs" :title="record.content">
+                        <div class="text-gray-400 font-mono text-sm truncate max-w-xs flex-1" :title="record.content">
                             [[ record.content ]]
                         </div>
+                        <button @click="openEdit(record)"
+                            class="flex-shrink-0 px-3 py-1 text-xs rounded bg-slate-700 hover:bg-blue-600 text-white transition-colors">
+                            Edit
+                        </button>
                     </div>
                 </div>
             </div>
@@ -164,8 +171,120 @@
                 </div>
             </div>
         </div>
+
+    <!-- Edit Record Modal -->
+    <div v-if="editModal.stage !== 'closed'" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <div class="bg-slate-800 rounded-lg border border-slate-600 p-6 w-full max-w-lg shadow-2xl">
+
+            <!-- Stage 1: Edit Form -->
+            <div v-if="editModal.stage === 'form'">
+                <h2 class="text-xl font-bold mb-1">Edit DNS Record</h2>
+                <p class="text-sm text-gray-400 mb-4">
+                    <span class="px-2 py-0.5 text-xs rounded bg-slate-700 text-blue-300 font-mono mr-1">[[ editRecord.type ]]</span>
+                    [[ editRecord.zone_name ]]
+                </p>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Name</label>
+                        <input v-model="editForm.name"
+                            class="w-full p-2 bg-slate-900 border border-slate-600 rounded text-white focus:border-blue-500 focus:outline-none font-mono text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Content</label>
+                        <input v-model="editForm.content"
+                            class="w-full p-2 bg-slate-900 border border-slate-600 rounded text-white focus:border-blue-500 focus:outline-none font-mono text-sm">
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-400 mb-1">TTL <span class="text-gray-500">(1 = Auto)</span></label>
+                            <input v-model.number="editForm.ttl" type="number" min="1"
+                                class="w-full p-2 bg-slate-900 border border-slate-600 rounded text-white focus:border-blue-500 focus:outline-none text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Proxied</label>
+                            <div class="flex items-center mt-2 gap-2">
+                                <input type="checkbox" v-model="editForm.proxied" class="w-4 h-4 accent-blue-500">
+                                <span class="text-sm">[[ editForm.proxied ? 'Yes' : 'No' ]]</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-5">
+                    <button @click="closeEdit"
+                        class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">Cancel</button>
+                    <button @click="editModal.stage = 'preview'"
+                        class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm ml-auto">Preview Changes
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stage 2: Preview -->
+            <div v-if="editModal.stage === 'preview'">
+                <h2 class="text-xl font-bold mb-4">Preview Changes</h2>
+                <div class="rounded bg-slate-900 border border-slate-700 p-4 text-sm font-mono space-y-2">
+                    <div class="text-gray-400 text-xs mb-3 uppercase tracking-wide">What will change:</div>
+                    <div v-if="editRecord.name !== editForm.name">
+                        <span class="text-gray-500">Name:&nbsp;</span>
+                        <span class="text-red-400 line-through">[[ editRecord.name ]]</span>
+                        <span class="text-gray-500"> → </span>
+                        <span class="text-green-400">[[ editForm.name ]]</span>
+                    </div>
+                    <div v-if="editRecord.content !== editForm.content">
+                        <span class="text-gray-500">Content:&nbsp;</span>
+                        <span class="text-red-400 line-through">[[ editRecord.content ]]</span>
+                        <span class="text-gray-500"> → </span>
+                        <span class="text-green-400">[[ editForm.content ]]</span>
+                    </div>
+                    <div v-if="editRecord.ttl !== editForm.ttl">
+                        <span class="text-gray-500">TTL:&nbsp;</span>
+                        <span class="text-red-400 line-through">[[ editRecord.ttl ]]</span>
+                        <span class="text-gray-500"> → </span>
+                        <span class="text-green-400">[[ editForm.ttl ]]</span>
+                    </div>
+                    <div v-if="editRecord.proxied !== editForm.proxied">
+                        <span class="text-gray-500">Proxied:&nbsp;</span>
+                        <span class="text-red-400 line-through">[[ editRecord.proxied ? 'Yes' : 'No' ]]</span>
+                        <span class="text-gray-500"> → </span>
+                        <span class="text-green-400">[[ editForm.proxied ? 'Yes' : 'No' ]]</span>
+                    </div>
+                    <div v-if="!editHasChanges" class="text-gray-500 italic">No changes detected.</div>
+                </div>
+                <div class="flex gap-2 mt-5">
+                    <button @click="editModal.stage = 'form'"
+                        class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">Back</button>
+                    <button @click="editModal.stage = 'confirm'" :disabled="!editHasChanges"
+                        class="px-4 py-2 rounded bg-yellow-600 hover:bg-yellow-500 text-sm ml-auto disabled:opacity-50 disabled:cursor-not-allowed">
+                        Accept
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stage 3: Confirm -->
+            <div v-if="editModal.stage === 'confirm'">
+                <h2 class="text-xl font-bold mb-2">Confirm Change</h2>
+                <p class="text-sm text-gray-400 mb-4">This will update the live DNS record in Cloudflare. Type
+                    <span class="text-white font-bold font-mono">Yes</span> below to proceed.
+                </p>
+                <input v-model="editConfirmText" type="text" placeholder="Type Yes to confirm"
+                    @keyup.enter="editConfirmText === 'Yes' && !editModal.submitting && submitEdit()"
+                    class="w-full p-2 bg-slate-900 border border-slate-600 rounded text-white focus:border-blue-500 focus:outline-none mb-4">
+                <div class="flex gap-2">
+                    <button @click="editModal.stage = 'preview'"
+                        class="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-sm">Back</button>
+                    <button @click="submitEdit"
+                        :disabled="editConfirmText !== 'Yes' || editModal.submitting"
+                        class="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-sm ml-auto disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span v-if="editModal.submitting">Updating...</span>
+                        <span v-else>Confirm Update</span>
+                    </button>
+                </div>
+                <p v-if="editModal.error" class="text-red-400 text-sm mt-3">[[ editModal.error ]]</p>
+            </div>
+
+        </div>
     </div>
-    </div>
+
+    </div><!-- end #app -->
 
     <script>
         const { createApp } = Vue
@@ -186,10 +305,32 @@
                         in_progress: false,
                         last_sync_at: null,
                         last_error: null
-                    }
+                    },
+                    editModal: {
+                        stage: 'closed', // 'closed' | 'form' | 'preview' | 'confirm'
+                        submitting: false,
+                        error: null
+                    },
+                    editRecord: null,
+                    editForm: {
+                        name: '',
+                        content: '',
+                        ttl: 1,
+                        proxied: false
+                    },
+                    editConfirmText: ''
                 }
             },
             computed: {
+                editHasChanges() {
+                    if (!this.editRecord) return false;
+                    return (
+                        this.editRecord.name !== this.editForm.name ||
+                        this.editRecord.content !== this.editForm.content ||
+                        this.editRecord.ttl !== this.editForm.ttl ||
+                        this.editRecord.proxied !== this.editForm.proxied
+                    );
+                },
                 filteredRecords() {
                     return this.records;
                 },
@@ -300,6 +441,57 @@
                     } catch (e) {
                         console.error(e);
                         this.syncing = false;
+                    }
+                },
+                openEdit(record) {
+                    this.editRecord = record;
+                    this.editForm = {
+                        name: record.name,
+                        content: record.content,
+                        ttl: record.ttl,
+                        proxied: record.proxied
+                    };
+                    this.editConfirmText = '';
+                    this.editModal = { stage: 'form', submitting: false, error: null };
+                },
+                closeEdit() {
+                    this.editModal.stage = 'closed';
+                    this.editConfirmText = '';
+                    this.editRecord = null;
+                },
+                async submitEdit() {
+                    this.editModal.submitting = true;
+                    this.editModal.error = null;
+                    const token = this.apiKey || localStorage.getItem('cf_api_token');
+                    if (!token) {
+                        this.editModal.error = 'No API token found. Please re-sync first.';
+                        this.editModal.submitting = false;
+                        return;
+                    }
+                    try {
+                        const res = await fetch(`/api/records/${this.editRecord.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                api_token: token,
+                                name: this.editForm.name,
+                                content: this.editForm.content,
+                                ttl: this.editForm.ttl,
+                                proxied: this.editForm.proxied
+                            })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                            this.editModal.error = data.detail || 'Failed to update record.';
+                            this.editModal.submitting = false;
+                            return;
+                        }
+                        this.closeEdit();
+                        // Re-sync all records same as pressing Refresh
+                        await this.syncNow();
+                    } catch (e) {
+                        this.editModal.error = 'Network error: ' + e.message;
+                        this.editModal.submitting = false;
                     }
                 },
                 formatTimestamp(value) {

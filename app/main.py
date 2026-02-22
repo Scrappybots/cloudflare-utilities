@@ -206,6 +206,42 @@ class RecordOut(BaseModel):
     class Config:
         from_attributes = True
 
+class UpdateRecordRequest(BaseModel):
+    api_token: str
+    name: str
+    content: str
+    ttl: int
+    proxied: bool
+
+@app.put("/api/records/{record_id}")
+async def update_record(record_id: str, request: UpdateRecordRequest, db: AsyncSession = Depends(get_db)):
+    """Update a DNS record directly in Cloudflare via the API."""
+    result = await db.execute(select(Record).where(Record.id == record_id))
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found in local database.")
+
+    headers = {"Authorization": f"Bearer {request.api_token}", "Content-Type": "application/json"}
+    payload = {
+        "type": record.type,
+        "name": request.name,
+        "content": request.content,
+        "ttl": request.ttl,
+        "proxied": request.proxied,
+    }
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        response = await client.put(
+            f"https://api.cloudflare.com/client/v4/zones/{record.zone_id}/dns_records/{record_id}",
+            json=payload
+        )
+        data = response.json()
+        if not data.get("success"):
+            errors = data.get("errors", [])
+            detail = "; ".join(e.get("message", str(e)) for e in errors) if errors else "Unknown Cloudflare error"
+            raise HTTPException(status_code=400, detail=detail)
+
+    return {"status": "success", "message": "Record updated successfully."}
+
 @app.get("/api/records", response_model=List[RecordOut])
 async def get_records(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Record).options(selectinload(Record.zone)))
